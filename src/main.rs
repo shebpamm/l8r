@@ -153,7 +153,13 @@ fn is_stdin_redirected() -> Result<bool, Error> {
     Ok(true)
 }
 
+// example sftp path: host:/path/to/file
+fn is_sftp_path(s: &str) -> bool {
+    s.contains(':')
+}
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    env_logger::init();
     let args = Args::parse();
 
     let matcher: Option<Regex> = match args.matcher {
@@ -162,7 +168,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
 
     let reader: Box<dyn BufRead> = match &args.file {
-        Some(file) => Box::new(BufReader::new(File::open(file)?)),
+        Some(file) => {
+            if is_sftp_path(file.to_str().unwrap()) {
+                let (host, path) = file.to_str().unwrap().split_once(':').unwrap();
+                let mut session = ssh2::Session::new()?;
+                session.set_tcp_stream(std::net::TcpStream::connect(format!("{}:22", host))?);
+                session.handshake()?;
+                session.userauth_agent(env!("USER"))?;
+                let sftp = session.sftp()?;
+                let file = sftp.open(std::path::Path::new(path))?;
+                Box::new(BufReader::new(file))
+            } else {
+                Box::new(BufReader::new(File::open(file)?))
+            }
+        }
         None => {
             if is_stdin_redirected()? {
                 Box::new(BufReader::new(std::io::stdin()))

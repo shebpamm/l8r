@@ -57,6 +57,8 @@ EOF
           default = pkgs.mkShell {
             buildInputs = with pkgs; [
               cargo
+              openssl
+              pkg-config
             ];
           };
         });
