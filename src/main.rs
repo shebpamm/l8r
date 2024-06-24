@@ -8,25 +8,36 @@ use once_cell::sync::Lazy;
 use colored::Colorize;
 use anyhow::Error;
 use atty::Stream;
+use serde::Serialize;
 
 static RE: Lazy<Regex> = regex_static::lazy_regex!(r#"^(?P<month>[A-Za-z]{3})\s+(?P<day>\d{1,2})\s+(?P<time>[0-9:]{8})\s+(?P<host>\w+)\s+(?P<process_id>[A-Za-z0-9]+\[\d+\]):\s+(?P<source_ip_port>[0-9.]+:[0-9]+)\s+\[(?P<time_stamp_accepted>.+)\]\s+(?P<frontend_name>\w+)\s+(?P<backend_name>[\w-]+)/(?P<server_name>[-\w]+)\s+(?P<queues_stats>\d+/\d+/\d+/\d+/\d+)\s+(?P<response_code>\d+)\s+(?P<bytes_read>\d+)\s-\s-\s(?P<termination_state>[-\w]{4})\s(?P<conn_counts>\d+/\d+/\d+/\d+/\d+)\s+(?P<queue>\d+/\d+)\s+"(?P<request>.*)"$"#);
+
+#[derive(clap::ValueEnum, Clone, Default, Debug, Serialize)]
+#[serde(rename_all = "lowercase")]
+enum OutputFormat {
+    Raw,
+    #[default]
+    Color,
+    Json,
+    Wide,
+}
 
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
 struct Args {
     pub file: Option<PathBuf>,
     #[arg(short, long)]
-    pub dull: bool,
-    #[arg(short, long)]
     pub errors: bool,
     #[arg(short, long)]
     pub matcher: Option<String>,
     #[arg(short, long)]
     pub verbose: bool,
+    #[arg(short, long)]
+    pub output: Option<OutputFormat>,
 }
 
 // May  8 00:08:30 applb05 haproxy[3091252]: 127.0.0.1:6102 [08/May/2024:00:08:30.660] mclbfe silo-mclb-silo-backend/kube-prod2-node16 0/0/9/17/26 200 1005 - - ---- 823/541/29/2/0 0/0 "GET /silo/collections/1b629de5_1aaf_47d7_8b6d_5cfdcc8337e3 HTTP/1.1"
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 pub struct HaproxyLogEntry {
     pub month: String,
     pub day: String,
@@ -187,9 +198,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     continue;
                 }
 
-                println!("{}", match args.dull {
-                    true => entry.colorless(),
-                    false => entry.colorize()
+                println!("{}", match args.output {
+                    Some(OutputFormat::Raw) => entry.colorless(),
+                    Some(OutputFormat::Json) => serde_json::to_string(&entry)?,
+                    Some(OutputFormat::Wide) => entry.colorize(),
+                    _ => entry.colorize()
                 });
             }
             Err(_) => {
