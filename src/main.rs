@@ -30,6 +30,8 @@ struct Args {
     #[arg(short, long)]
     pub errors: bool,
     #[arg(short, long)]
+    pub terminations: bool,
+    #[arg(short, long)]
     pub matcher: Option<String>,
     #[arg(short, long)]
     pub verbose: bool,
@@ -511,6 +513,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         match HaproxyLogEntry::parse(&line) {
             Ok(entry) => {
                 if args.errors && !entry.is_error() {
+                    continue;
+                }
+
+                if args.terminations && !entry.termination_state.is_error() {
                     continue;
                 }
 
