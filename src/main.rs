@@ -38,6 +38,7 @@ struct Args {
 
 #[derive(Debug, Serialize)]
 pub struct HaproxyTimers {
+    pub raw: String,
     pub client_request: u64,
     pub queue_wait: u64,
     pub establish: u64,
@@ -53,6 +54,7 @@ impl HaproxyTimers {
         }
 
         Ok(HaproxyTimers {
+            raw: s.to_string(),
             client_request: parts[0].parse()?,
             queue_wait: parts[1].parse()?,
             establish: parts[2].parse()?,
@@ -176,6 +178,7 @@ impl HaproxyTerminationStateEntry {
 
 #[derive(Debug, Serialize, PartialEq)]
 pub struct HaproxyTerminationState {
+    pub raw: String,
     pub termination_reason: HaproxyTerminationStateEntry,
     pub session_state: HaproxyTerminationStateEntry,
     pub persistence_cookie: HaproxyTerminationStateEntry,
@@ -188,8 +191,11 @@ impl HaproxyTerminationState {
         let session_state = HaproxyTerminationStateEntry::state(s.chars().nth(1).ok_or("")?);
         let persistence_cookie = HaproxyTerminationStateEntry::cookie(s.chars().nth(2).ok_or("")?);
         let persistence_operations = HaproxyTerminationStateEntry::operations(s.chars().nth(3).ok_or("")?);
+        let raw = s.to_string();
+
 
         Ok(HaproxyTerminationState {
+            raw,
             termination_reason,
             session_state,
             persistence_cookie,
@@ -205,6 +211,40 @@ impl HaproxyTerminationState {
 impl std::fmt::Display for HaproxyTerminationState {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}{}{}{}", self.termination_reason.shorthand, self.session_state.shorthand, self.persistence_cookie.shorthand, self.persistence_operations.shorthand)
+    }
+}
+
+#[derive(Debug, Serialize)]
+pub struct HaproxyConnectionCounts {
+    pub raw: String,
+    pub current: u64,
+    pub limit: u64,
+    pub max: u64,
+    pub total: u64,
+    pub rejected: u64,
+}
+
+impl HaproxyConnectionCounts {
+    fn parse(s: &str) -> Result<Self, Box<dyn std::error::Error>> {
+        let parts: Vec<&str> = s.split('/').collect();
+        if parts.len() != 5 {
+            return Err("Failed to parse connection counts".into());
+        }
+
+        Ok(HaproxyConnectionCounts {
+            raw: s.to_string(),
+            current: parts[0].parse()?,
+            limit: parts[1].parse()?,
+            max: parts[2].parse()?,
+            total: parts[3].parse()?,
+            rejected: parts[4].parse()?,
+        })
+    }
+}
+
+impl std::fmt::Display for HaproxyConnectionCounts {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}/{}/{}/{}/{}", self.current, self.limit, self.max, self.total, self.rejected)
     }
 }
 
@@ -225,7 +265,7 @@ pub struct HaproxyLogEntry {
     pub response_code: String,
     pub bytes_read: String,
     pub termination_state: HaproxyTerminationState,
-    pub conn_counts: String,
+    pub conn_counts: HaproxyConnectionCounts,
     pub queue: String,
     pub request: String, 
 }
@@ -248,7 +288,7 @@ impl HaproxyLogEntry {
             response_code: captures.name("response_code").ok_or("")?.as_str().to_string(),
             bytes_read: captures.name("bytes_read").ok_or("")?.as_str().to_string(),
             termination_state: HaproxyTerminationState::parse(captures.name("termination_state").ok_or("")?.as_str())?,
-            conn_counts: captures.name("conn_counts").ok_or("")?.as_str().to_string(),
+            conn_counts: HaproxyConnectionCounts::parse(captures.name("conn_counts").ok_or("")?.as_str())?,
             queue: captures.name("queue").ok_or("")?.as_str().to_string(),
             request: captures.name("request").ok_or("")?.as_str().to_string(),
         };
@@ -309,7 +349,7 @@ impl HaproxyLogEntry {
                 false => self.termination_state.to_string().green(),
                 true => self.termination_state.to_string().red()
             },
-            self.conn_counts.white(),
+            self.conn_counts.to_string().white(),
             self.queue.white(),
             self.request.white()
         )
