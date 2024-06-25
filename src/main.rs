@@ -467,7 +467,20 @@ fn output_table(entry: &HaproxyLogEntry) -> Result<String, Box<dyn std::error::E
     Ok(result)
 }
 
+#[cfg(unix)]
+fn reset_sigpipe() {
+    unsafe {
+        libc::signal(libc::SIGPIPE, libc::SIG_DFL);
+    }
+}
+
+#[cfg(not(unix))]
+fn reset_sigpipe() {
+    // no-op
+}
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    reset_sigpipe();
     let args = Args::parse();
 
     let matcher: Option<Regex> = match args.matcher {
