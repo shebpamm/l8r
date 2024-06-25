@@ -19,6 +19,7 @@ enum OutputFormat {
     #[default]
     Color,
     Json,
+    Yaml,
     Wide,
 }
 
@@ -413,6 +414,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 println!("{}", match args.output {
                     Some(OutputFormat::Raw) => entry.colorless(),
                     Some(OutputFormat::Json) => serde_json::to_string(&entry)?,
+                    Some(OutputFormat::Yaml) => { 
+                        format!("---\n{}",
+                            serde_yaml::to_string(&entry)?
+                        )
+                    }
                     Some(OutputFormat::Wide) => entry.colorize(),
                     _ => entry.colorize()
                 });
