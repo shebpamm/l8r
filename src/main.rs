@@ -249,6 +249,32 @@ impl std::fmt::Display for HaproxyConnectionCounts {
     }
 }
 
+#[derive(Debug, Serialize)]
+pub struct HaproxyQueueStats {
+    pub server: u64,
+    pub backend: u64,
+}
+
+impl HaproxyQueueStats {
+    fn parse(s: &str) -> Result<Self, Box<dyn std::error::Error>> {
+        let parts: Vec<&str> = s.split('/').collect();
+        if parts.len() != 2 {
+            return Err("Failed to parse queue stats".into());
+        }
+
+        Ok(HaproxyQueueStats {
+            server: parts[0].parse()?,
+            backend: parts[1].parse()?,
+        })
+    }
+}
+
+impl std::fmt::Display for HaproxyQueueStats {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}/{}", self.server, self.backend)
+    }
+}
+
 // May  8 00:08:30 applb05 haproxy[3091252]: 127.0.0.1:6102 [08/May/2024:00:08:30.660] mclbfe silo-mclb-silo-backend/kube-prod2-node16 0/0/9/17/26 200 1005 - - ---- 823/541/29/2/0 0/0 "GET /silo/collections/1b629de5_1aaf_47d7_8b6d_5cfdcc8337e3 HTTP/1.1"
 #[derive(Debug, Serialize)]
 pub struct HaproxyLogEntry {
@@ -267,7 +293,7 @@ pub struct HaproxyLogEntry {
     pub bytes_read: String,
     pub termination_state: HaproxyTerminationState,
     pub conn_counts: HaproxyConnectionCounts,
-    pub queue: String,
+    pub queue: HaproxyQueueStats,
     pub request: String, 
 }
 
@@ -290,7 +316,7 @@ impl HaproxyLogEntry {
             bytes_read: captures.name("bytes_read").ok_or("")?.as_str().to_string(),
             termination_state: HaproxyTerminationState::parse(captures.name("termination_state").ok_or("")?.as_str())?,
             conn_counts: HaproxyConnectionCounts::parse(captures.name("conn_counts").ok_or("")?.as_str())?,
-            queue: captures.name("queue").ok_or("")?.as_str().to_string(),
+            queue: HaproxyQueueStats::parse(captures.name("queue").ok_or("")?.as_str())?,
             request: captures.name("request").ok_or("")?.as_str().to_string(),
         };
 
@@ -312,7 +338,7 @@ impl HaproxyLogEntry {
             self.timers,
             self.response_code,
             self.bytes_read,
-            format!("{}", self.termination_state),
+            self.termination_state,
             self.conn_counts,
             self.queue,
             self.request
@@ -351,7 +377,7 @@ impl HaproxyLogEntry {
                 true => self.termination_state.to_string().red()
             },
             self.conn_counts.to_string().white(),
-            self.queue.white(),
+            self.queue.to_string().white(),
             self.request.white()
         )
 
@@ -375,6 +401,70 @@ fn is_stdin_redirected() -> Result<bool, Error> {
     }
 
     Ok(true)
+}
+
+fn output_table(entry: &HaproxyLogEntry) -> Result<String, Box<dyn std::error::Error>> {
+    let mut result = "".to_string();
+    
+    result.push_str(&format!("{}: {}\n", "Month".bold(), entry.month.white()));
+    result.push_str(&format!("{}: {}\n", "Day".bold(), entry.day.white()));
+    result.push_str(&format!("{}: {}\n", "Time".bold(), entry.time.white()));
+    result.push_str(&format!("{}: {}\n", "Host".bold(), entry.host.white()));
+    result.push_str(&format!("{}: {}\n", "Process ID".bold(), entry.process_id.white()));
+    result.push_str(&format!("{}: {}\n", "Source IP Port".bold(), entry.source_ip_port.white()));
+    result.push_str(&format!("{}: {}\n", "Time Stamp Accepted".bold(), entry.time_stamp_accepted.white()));
+    result.push_str(&format!("{}: {}\n", "Frontend Name".bold(), entry.frontend_name.purple()));
+    result.push_str(&format!("{}: {}\n", "Backend Name".bold(), entry.backend_name.yellow()));
+    result.push_str(&format!("{}: {}\n", "Server Name".bold(), entry.server_name.blue()));
+    result.push_str(&format!("{}: {}\n", "Timers".bold(), entry.timers.to_string().white()));
+
+    result.push_str(&format!("∟ {}: {}\n", "Client Request".bold(), entry.timers.client_request.to_string().white()));
+    result.push_str(&format!("∟ {}: {}\n", "Queue Wait".bold(), entry.timers.queue_wait.to_string().white()));
+    result.push_str(&format!("∟ {}: {}\n", "Establish".bold(), entry.timers.establish.to_string().white()));
+    result.push_str(&format!("∟ {}: {}\n", "Server Response".bold(), entry.timers.server_response.to_string().white()));
+    result.push_str(&format!("∟ {}: {}\n", "Total".bold(), entry.timers.total.to_string().white()));
+
+    result.push_str(&format!("{}: {}\n", "Response Code".bold(), match entry.response_code.as_str().parse::<u16>() {
+        Ok(code) => {
+            if code >= 200 && code < 300 {
+                entry.response_code.green()
+            } else if code >= 300 && code < 400 {
+                entry.response_code.yellow()
+            } else if code >= 400 {
+                entry.response_code.red()
+            } else {
+                entry.response_code.white()
+            }
+        }
+        Err(_) => entry.response_code.white()
+    }));
+    result.push_str(&format!("{}: {}\n", "Bytes Read".bold(), entry.bytes_read.white()));
+    result.push_str(&format!("{}: {}\n", "Termination State".bold(), match entry.termination_state.is_error() {
+        false => entry.termination_state.to_string().green(),
+        true => entry.termination_state.to_string().red()
+    }));
+
+    result.push_str(&format!("∟ {}: {}\n", "Termination Reason".bold(), entry.termination_state.termination_reason.description.white()));
+    result.push_str(&format!("∟ {}: {}\n", "Session State".bold(), entry.termination_state.session_state.description.white()));
+    result.push_str(&format!("∟ {}: {}\n", "Persistence Cookie".bold(), entry.termination_state.persistence_cookie.description.white()));
+    result.push_str(&format!("∟ {}: {}\n", "Persistence Operations".bold(), entry.termination_state.persistence_operations.description.white()));
+
+    result.push_str(&format!("{}: {}\n", "Connection Counts".bold(), entry.conn_counts.to_string().white()));
+
+    result.push_str(&format!("∟ {}: {}\n", "Current".bold(), entry.conn_counts.current.to_string().white()));
+    result.push_str(&format!("∟ {}: {}\n", "Limit".bold(), entry.conn_counts.limit.to_string().white()));
+    result.push_str(&format!("∟ {}: {}\n", "Max".bold(), entry.conn_counts.max.to_string().white()));
+    result.push_str(&format!("∟ {}: {}\n", "Total".bold(), entry.conn_counts.total.to_string().white()));
+    result.push_str(&format!("∟ {}: {}\n", "Rejected".bold(), entry.conn_counts.rejected.to_string().white()));
+
+    result.push_str(&format!("{}: {}\n", "Queue".bold(), entry.queue.to_string().white()));
+
+    result.push_str(&format!("∟ {}: {}\n", "Server".bold(), entry.queue.server.to_string().white()));
+    result.push_str(&format!("∟ {}: {}\n", "Backend".bold(), entry.queue.backend.to_string().white()));
+
+    result.push_str(&format!("{}: {}\n", "Request".bold(), entry.request.white()));
+
+    Ok(result)
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -419,8 +509,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                             serde_yaml::to_string(&entry)?
                         )
                     }
-                    Some(OutputFormat::Wide) => entry.colorize(),
-                    _ => entry.colorize()
+                    Some(OutputFormat::Wide) => output_table(&entry)?,
+                    Some(OutputFormat::Color) | None => entry.colorize()
                 });
             }
             Err(_) => {
