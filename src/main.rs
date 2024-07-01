@@ -42,6 +42,9 @@ struct Args {
     pub verbose: bool,
     #[arg(short, long)]
     pub output: Option<OutputFormat>,
+    #[arg(long)]
+    #[clap(default_value = "false")]
+    pub serial: bool
 }
 
 enum Reader {
@@ -111,21 +114,23 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
             }
     };
+
     match reader {
         Reader::File(reader) => {
-            reader.lines().par_bridge().for_each(|line| {
-                if let Ok(line) = line {
-                    parser(line);
-                }
-            });
+            if args.serial {
+                reader.lines().filter_map(|line| line.ok()).for_each(parser);
+            } else {
+                reader.lines().par_bridge().filter_map(|line| line.ok()).for_each(parser);
+            }
         }
         Reader::Stdin(reader) => {
-            reader.lines().par_bridge().for_each(|line| {
-                if let Ok(line) = line {
-                    parser(line);
-                }
-            });
+            if args.serial {
+                reader.lines().filter_map(|line| line.ok()).for_each(parser);
+            } else {
+                reader.lines().par_bridge().filter_map(|line| line.ok()).for_each(parser);
+            }
         }
+    
     }
     Ok(())
 }
