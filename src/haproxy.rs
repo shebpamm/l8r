@@ -242,47 +242,47 @@ impl std::fmt::Display for HaproxyQueueStats {
 
 // May  8 00:08:30 applb05 haproxy[3091252]: 127.0.0.1:6102 [08/May/2024:00:08:30.660] mclbfe silo-mclb-silo-backend/kube-prod2-node16 0/0/9/17/26 200 1005 - - ---- 823/541/29/2/0 0/0 "GET /silo/collections/1b629de5_1aaf_47d7_8b6d_5cfdcc8337e3 HTTP/1.1"
 #[derive(Debug, Serialize)]
-pub struct HaproxyLogEntry {
-    pub month: String,
-    pub day: String,
-    pub time: String,
-    pub host: String,
-    pub process_id: String,
-    pub source_ip_port: String, 
-    pub time_stamp_accepted: String,
-    pub frontend_name: String, 
-    pub backend_name: String, 
-    pub server_name: String,
+pub struct HaproxyLogEntry<'a> {
+    pub month: &'a str,
+    pub day: &'a str,
+    pub time: &'a str,
+    pub host: &'a str,
+    pub process_id: &'a str,
+    pub source_ip_port: &'a str,
+    pub time_stamp_accepted: &'a str,
+    pub frontend_name: &'a str,
+    pub backend_name: &'a str,
+    pub server_name: &'a str,
     pub timers: HaproxyTimers,
-    pub response_code: String,
-    pub bytes_read: String,
+    pub response_code: &'a str,
+    pub bytes_read: &'a str,
     pub termination_state: HaproxyTerminationState,
     pub conn_counts: HaproxyConnectionCounts,
     pub queue: HaproxyQueueStats,
-    pub request: String, 
+    pub request: &'a str,
 }
 
-impl HaproxyLogEntry {
-    pub fn parse(s: &str) -> Result<Self, Box<dyn std::error::Error>> {
+impl<'a> HaproxyLogEntry<'a> {
+    pub fn parse(s: &'a str) -> Result<Self, Box<dyn std::error::Error>> {
         let captures = RE.captures(s).ok_or("Failed to parse line")?;
         let data = HaproxyLogEntry {
-            month: captures.name("month").ok_or("")?.as_str().to_string(),
-            day: captures.name("day").ok_or("")?.as_str().to_string(),
-            time: captures.name("time").ok_or("")?.as_str().to_string(),
-            host: captures.name("host").ok_or("")?.as_str().to_string(),
-            process_id: captures.name("process_id").ok_or("")?.as_str().to_string(),
-            source_ip_port: captures.name("source_ip_port").ok_or("")?.as_str().to_string(),
-            time_stamp_accepted: captures.name("time_stamp_accepted").ok_or("")?.as_str().to_string(),
-            frontend_name: captures.name("frontend_name").ok_or("")?.as_str().to_string(),
-            backend_name: captures.name("backend_name").ok_or("")?.as_str().to_string(),
-            server_name: captures.name("server_name").ok_or("")?.as_str().to_string(),
+            month: captures.name("month").ok_or("")?.as_str(),
+            day: captures.name("day").ok_or("")?.as_str(),
+            time: captures.name("time").ok_or("")?.as_str(),
+            host: captures.name("host").ok_or("")?.as_str(),
+            process_id: captures.name("process_id").ok_or("")?.as_str(),
+            source_ip_port: captures.name("source_ip_port").ok_or("")?.as_str(),
+            time_stamp_accepted: captures.name("time_stamp_accepted").ok_or("")?.as_str(),
+            frontend_name: captures.name("frontend_name").ok_or("")?.as_str(),
+            backend_name: captures.name("backend_name").ok_or("")?.as_str(),
+            server_name: captures.name("server_name").ok_or("")?.as_str(),
             timers: HaproxyTimers::parse(captures.name("queues_stats").ok_or("")?.as_str())?,
-            response_code: captures.name("response_code").ok_or("")?.as_str().to_string(),
-            bytes_read: captures.name("bytes_read").ok_or("")?.as_str().to_string(),
+            response_code: captures.name("response_code").ok_or("")?.as_str(),
+            bytes_read: captures.name("bytes_read").ok_or("")?.as_str(),
             termination_state: HaproxyTerminationState::parse(captures.name("termination_state").ok_or("")?.as_str())?,
             conn_counts: HaproxyConnectionCounts::parse(captures.name("conn_counts").ok_or("")?.as_str())?,
             queue: HaproxyQueueStats::parse(captures.name("queue").ok_or("")?.as_str())?,
-            request: captures.name("request").ok_or("")?.as_str().to_string(),
+            request: captures.name("request").ok_or("")?.as_str(),
         };
 
         Ok(data)
@@ -322,7 +322,7 @@ impl HaproxyLogEntry {
             self.backend_name.yellow(),
             self.server_name.blue(),
             self.timers.to_string().white(),
-            match self.response_code.as_str().parse::<u16>() {
+            match self.response_code.parse::<u16>() {
                 Ok(code) => {
                     if code >= 200 && code < 300 {
                         self.response_code.green()
@@ -350,7 +350,7 @@ impl HaproxyLogEntry {
 
     // Check if error code is 400 or higher, or if no ---- termination_state
     pub fn is_error(&self) -> bool {
-        match self.response_code.as_str().parse::<u16>() {
+        match self.response_code.parse::<u16>() {
             Ok(code) => code >= 400 || self.termination_state.is_error(),
             Err(_) => true
         }

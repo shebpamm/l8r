@@ -33,7 +33,7 @@ pub fn output_table(entry: &HaproxyLogEntry) -> Result<String> {
     result.push_str(&format!("∟ {}: {}\n", "Server Response".bold(), entry.timers.server_response.to_string().white()));
     result.push_str(&format!("∟ {}: {}\n", "Total".bold(), entry.timers.total.to_string().white()));
 
-    result.push_str(&format!("{}: {}\n", "Response Code".bold(), match entry.response_code.as_str().parse::<u16>() {
+    result.push_str(&format!("{}: {}\n", "Response Code".bold(), match entry.response_code.parse::<u16>() {
         Ok(code) => {
             if code >= 200 && code < 300 {
                 entry.response_code.green()
